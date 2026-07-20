@@ -26,6 +26,22 @@ from .fit import FitEncoderWeight  # type: ignore
 
 logger = logging.getLogger(__name__)
 
+
+@functools.lru_cache(maxsize=1)
+def _load_exercise_catalog() -> dict[str, Any]:
+    """Load the bundled strength-exercise catalog (generated package data).
+
+    See scripts/refresh_exercises.py for how garminconnect/data/exercises.json is
+    regenerated from Garmin Connect's web-data. Cached after first read.
+    """
+    import json
+    from importlib.resources import files
+
+    text = files("garminconnect").joinpath("data/exercises.json").read_text(
+        encoding="utf-8"
+    )
+    return json.loads(text)
+
 # Regex used to extract an HTTP status code from the client's error messages.
 # The underlying client raises GarminConnectConnectionError with a message of
 # the form "API Error {status} - {detail}", so we parse it to decide whether
@@ -2791,6 +2807,36 @@ class Garmin:
         if not isinstance(payload, dict | list):
             raise ValueError("workout_json must be a JSON object or array")
         return self.client.post("connectapi", url, json=payload, api=True)
+
+    def get_exercise_types(
+        self, category: str | None = None
+    ) -> dict[str, Any]:
+        """Return Garmin's strength-exercise catalog (bundled reference data).
+
+        Offline lookup — reads packaged data generated from Garmin Connect's
+        web-data (see scripts/refresh_exercises.py); no network or auth needed.
+        Garmin's OAuth/DI token cannot reach the web-data endpoints, so the
+        catalog is shipped with the library and refreshed out of band.
+
+        Use this to build strength workouts with valid ``category`` /
+        ``exerciseName`` keys: each exercise carries its display name, primary
+        and secondary muscles, and required equipment.
+
+        Args:
+            category: optional category key (e.g. ``"BENCH_PRESS"``,
+                case-insensitive). When given, returns only that category's
+                block; raises ValueError for an unknown category. When omitted,
+                returns the full catalog.
+
+        """
+        catalog = _load_exercise_catalog()
+        if category is None:
+            return catalog
+        categories = catalog["categories"]
+        key = category.upper()
+        if key not in categories:
+            raise ValueError(f"unknown exercise category: {category!r}")
+        return categories[key]
 
     def upload_running_workout(self, workout: Any) -> dict[str, Any]:
         """Upload a typed running workout.

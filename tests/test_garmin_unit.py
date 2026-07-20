@@ -509,3 +509,32 @@ class TestResponseHandling:
         assert last_params["start"] == "40"
         assert last_params["startDate"] == "2026-03-01"
         assert last_params["endDate"] == "2026-03-31"
+
+
+# ---------------------------------------------------------------------------
+# get_exercise_types (bundled catalog)
+# ---------------------------------------------------------------------------
+
+
+class TestGetExerciseTypes:
+    """``get_exercise_types`` reads the bundled catalog offline (no network)."""
+
+    def test_full_catalog(self, garmin: garminconnect.Garmin):
+        cat = garmin.get_exercise_types()
+        assert "categories" in cat
+        assert len(cat["categories"]) > 30
+        # spot-check a well-known category/exercise shape
+        bench = cat["categories"]["BENCH_PRESS"]
+        assert "exercises" in bench and bench["exercises"]
+        any_ex = next(iter(bench["exercises"].values()))
+        assert {"displayName", "primaryMuscles", "secondaryMuscles", "equipment"} <= set(any_ex)
+
+    def test_single_category_case_insensitive(self, garmin: garminconnect.Garmin):
+        upper = garmin.get_exercise_types("BENCH_PRESS")
+        lower = garmin.get_exercise_types("bench_press")
+        assert upper == lower
+        assert "exercises" in upper
+
+    def test_unknown_category_raises(self, garmin: garminconnect.Garmin):
+        with pytest.raises(ValueError, match="unknown exercise category"):
+            garmin.get_exercise_types("NOT_A_CATEGORY")
